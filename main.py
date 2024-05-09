@@ -39,13 +39,21 @@ def generate_code(s, code_before_with_line_numbers, code_after_with_line_numbers
     s += "It's your task to write code following the following instruction:\n"
     s += "Instruction: " + instruction + "\n"
     s += "Code after the instruction:\n"
-    s += code_after_with_line_numbers + "\n\n"
-    s += "Code before the instruction:\n"
-    s += code_before_with_line_numbers + "\n\n"
-    s += "Please write the code below.\n"
-    s += "Code:\n"
     s += "```python\n"
-    s += gen("code", max_tokens=1024, stop=["```"])
+    s += code_after_with_line_numbers + "\n\n"
+    s += "```"
+    s += "Code before the instruction:\n"
+    s += "```python\n"
+    s += code_before_with_line_numbers + "\n\n"
+    s += "```"
+    s += "Please write the code below.\n"
+    s += "Code in between the two code blocks:\n"
+    s += "```python\n"
+    s += gen("code_with_line_numbers", max_tokens=1024, stop=["```", "\nassert"])
+    s += "```\n\n"
+    s += "Same code in between the two code blocks but without line numbers:\n"
+    s += "```python\n"
+    s += gen("code", max_tokens=1024, stop=["```", "\nassert"])
 
 
 def get_matching_line(file_content, prefix_pattern):
@@ -130,6 +138,7 @@ def insert_code(file_path, code, line_number):
 import subprocess
 def run_program():
     run_command = run_config.config['run_command']
+    print("run_command:", run_command)
     process = subprocess.Popen(run_command, shell=True, stdout=subprocess.PIPE)
     process.wait()
     print("Output:")
@@ -138,33 +147,46 @@ def run_program():
     return exit_code == 0
 
 def main():
-    file_path = search_files()
-    with open(file_path, 'r') as f:
-        f_content = f.read()
-    instruction_line_number, instruction_line = get_matching_line(f_content, PREFIX_PATTERN)
-    print("instruction_line_number:", instruction_line_number)
-    print("instruction_line:", instruction_line)
-    assert_line_number, assert_line = get_first_assert_line_after(instruction_line_number, f_content)
-    print("assert_line_number:", assert_line_number)
-    print("assert_line:", assert_line)
-    code_before, code_after = get_surrounding_lines(f_content, instruction_line_number, assert_line_number)
-    print("code_before:", code_before)
-    print("code_after:", code_after)
-    instruction = extract_instruction(instruction_line)
-    code_before_with_line_numbers = add_line_numbers(code_before, 1)
-    code_after_with_line_numbers = add_line_numbers(code_after, assert_line_number + 1)
-    state = generate_code.run(
-        code_before_with_line_numbers=code_before_with_line_numbers,
-        code_after_with_line_numbers=code_after_with_line_numbers,
-        instruction=instruction,
-        temperature=0.5
-    )
-    print("state:", state)
-    code = state["code"]
-    print("code:", code)
-    insert_code(file_path, code, instruction_line_number + 1)
-    success = run_program()
-    print("success:", success)
+    attempt = 0
+    while True:
+        file_path = search_files()
+        with open(file_path, 'r') as f:
+            f_content = f.read()
+        instruction_line_number, instruction_line = get_matching_line(f_content, PREFIX_PATTERN)
+        print("instruction_line_number:", instruction_line_number)
+        print("instruction_line:", instruction_line)
+        assert_line_number, assert_line = get_first_assert_line_after(instruction_line_number, f_content)
+        print("assert_line_number:", assert_line_number)
+        print("assert_line:", assert_line)
+        code_before, code_after = get_surrounding_lines(f_content, instruction_line_number, assert_line_number)
+        print("code_before:", code_before)
+        print("code_after:", code_after)
+        instruction = extract_instruction(instruction_line)
+        code_before_with_line_numbers = add_line_numbers(code_before, 1)
+        code_after_with_line_numbers = add_line_numbers(code_after, assert_line_number + 1)
+        state = generate_code.run(
+            code_before_with_line_numbers=code_before_with_line_numbers,
+            code_after_with_line_numbers=code_after_with_line_numbers,
+            instruction=instruction,
+            temperature=0.5
+        )
+        print("state:", state)
+        code = state["code"]
+        print("code:", code)
+        with open(file_path, 'r') as f:
+            original_file_content = f.read()
+
+        insert_code(file_path, code, instruction_line_number + 1)
+        success = run_program()
+        print("success:", success)
+        attempt += 1
+        if not success:
+            with open(file_path, 'w') as f:
+                f.write(original_file_content)
+            print("Code reverted to original")
+        else:
+            print(f"Code successfully inserted after {attempt} attempts")
+            break
 
 
 
