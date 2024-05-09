@@ -4,8 +4,7 @@ import yaml
 
 CONFIG_FILE_NAME = 'ic_config.yaml'
 
-TEMPLATE_CONFIG = '''
-run_command:
+TEMPLATE_CONFIG = '''run_command:
 '''
 
 # check if the file exists
